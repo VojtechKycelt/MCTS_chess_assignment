@@ -21,6 +21,8 @@
 
         System.Random rand;
 
+        MCTSNode root;
+
         // Diagnostics
         public SearchDiagnostics Diagnostics { get; set; }
         System.Diagnostics.Stopwatch searchStopwatch;
@@ -32,6 +34,7 @@
             evaluation = new Evaluation();
             moveGenerator = new MoveGenerator();
             rand = new System.Random();
+            root = new MCTSNode(board, moveGenerator, true);
         }
 
         public void StartSearch()
@@ -66,8 +69,27 @@
 
         void SearchMoves()
         {
-            // TODO
             // Don't forget to end the search once the abortSearch parameter gets set to true.
+            while (!abortSearch)
+            {
+                //1. selection
+                MCTSNode selectedNodeToExpand = root;
+                while (selectedNodeToExpand.children.Count > 0)
+                {
+                    selectedNodeToExpand = selectedNodeToExpand.SelectChild();
+                }
+
+
+                //2. expansion
+                //TODO - selectedNodeToExpand.Expand()...
+
+                //3. simulation
+                //TODO
+
+                //4. backpropagation
+                //TODO
+            }
+
 
             throw new NotImplementedException();
         }

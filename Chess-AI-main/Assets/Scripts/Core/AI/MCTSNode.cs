@@ -45,7 +45,7 @@
         // Selects the best child node based on UCT
         public MCTSNode SelectChild()
         {
-            const double C = 1.41; // Exploration constant, can be tuned
+            const double C = 1; // Exploration constant, can be tuned
             MCTSNode selectedChild = null;
             double bestUCTValue = double.NegativeInfinity;
 
