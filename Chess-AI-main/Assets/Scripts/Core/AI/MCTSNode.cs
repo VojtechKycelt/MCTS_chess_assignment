@@ -29,7 +29,7 @@
         }
 
         // Expands this node by exploring one of the unexplored moves
-        public void Expand()
+        public MCTSNode Expand()
         {
             if (unexploredMoves.Count > 0)
             {
@@ -38,11 +38,13 @@
                 newBoard.MakeMove(move);
                 MCTSNode childNode = new MCTSNode(newBoard, moveGenerator, !this.isMyTurn, this);
                 children.Add(childNode);
-                unexploredMoves.Remove(move);
+                unexploredMoves.RemoveAt(0); 
+                return childNode;
             }
+            return null;
         }
 
-        // Selects the best child node based on UCT
+        // Selects the best child node based on UCT 
         public MCTSNode SelectChild()
         {
             const double C = 1; // Exploration constant, can be tuned

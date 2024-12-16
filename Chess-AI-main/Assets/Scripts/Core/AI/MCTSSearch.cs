@@ -79,15 +79,17 @@
                     selectedNodeToExpand = selectedNodeToExpand.SelectChild();
                 }
 
-
                 //2. expansion
-                //TODO - selectedNodeToExpand.Expand()...
+                MCTSNode expandedNode = selectedNodeToExpand.Expand();
+                if (expandedNode != null)
+                {
+                    //3. simulation
+                    //TODO
 
-                //3. simulation
-                //TODO
 
-                //4. backpropagation
-                //TODO
+                    //4. backpropagation
+                    //TODO
+                }
             }
 
 
