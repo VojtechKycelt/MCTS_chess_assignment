@@ -5,6 +5,8 @@
     using System.Threading;
     using UnityEngine;
     using static System.Math;
+    using System.Linq; // Add this to access LINQ methods
+
     class MCTSSearch : ISearch
     {
         public event System.Action<Move> onSearchComplete;
@@ -34,7 +36,7 @@
             evaluation = new Evaluation();
             moveGenerator = new MoveGenerator();
             rand = new System.Random();
-            root = new MCTSNode(board, moveGenerator, true);
+            root = new MCTSNode(board, moveGenerator, Move.InvalidMove, true);
         }
 
         public void StartSearch()
@@ -83,17 +85,16 @@
                 MCTSNode expandedNode = selectedNodeToExpand.Expand();
                 if (expandedNode != null)
                 {
-                    //3. simulation
-                    //TODO
+                    // 3. simulation
+                    float simulationResult = expandedNode.Simulate(settings.playoutDepthLimit);
 
+                    // 4. backpropagation
+                    expandedNode.Backpropagate(simulationResult);
 
-                    //4. backpropagation
-                    //TODO
+                    bestMove = root.children.OrderByDescending(child => child.UCTValue).FirstOrDefault().initialMove;
                 }
             }
 
-
-            throw new NotImplementedException();
         }
 
         void LogDebugInfo()
