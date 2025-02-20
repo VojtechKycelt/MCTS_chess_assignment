@@ -2,6 +2,7 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using UnityEngine;
     public class MCTSNode
     {
@@ -9,23 +10,25 @@
         public MoveGenerator moveGenerator;
         public Evaluation evaluation;
         public MCTSNode parent;
-        public List<MCTSNode> children; 
+        public List<MCTSNode> children;
         public List<Move> unexploredMoves;
         public Move initialMove;    // The initial move that lead to this state 
-        public float rewards = 0; // Number of wins this node found
+        public float rewards = 0; // Number of rewards this node found
         public int visitedCount = 0; // Number of times this node has been visited
-        public double UCTValue = 0;
+        public double UCTValue = double.PositiveInfinity;
         public bool isMyTurn;
+        public bool team;
         System.Random rand;
-        const double C = 1;
+        public double C = 1; // / Mathf.Sqrt(2f);
 
-        public MCTSNode(Board board, MoveGenerator moveGenerator, Evaluation evaluation, Move initialMove, bool isMyTurn, MCTSNode parent = null)
+        public MCTSNode(Board board, MoveGenerator moveGenerator, Evaluation evaluation, Move initialMove, bool isMyTurn, bool team, MCTSNode parent = null)
         {
             this.board = board.Clone();
             this.moveGenerator = moveGenerator;
             this.evaluation = evaluation;
             this.initialMove = initialMove;
             this.isMyTurn = isMyTurn;
+            this.team = team;
             this.parent = parent;
             this.children = new List<MCTSNode>();
             this.unexploredMoves = moveGenerator.GenerateMoves(this.board, this.parent == null);
@@ -36,68 +39,51 @@
         // Selects the best child node based on UCT 
         public MCTSNode SelectChild()
         {
-            MCTSNode selectedChild = null;
-            double bestUCTValue = double.NegativeInfinity;
-
             foreach (var child in children)
             {
-                if (child.visitedCount == 0) // If a child node is unvisited, prioritize it
-                    return child;
-
-                double uctValue = computeUCTValue(child);
-
-                if (uctValue > bestUCTValue)
+                if (child.visitedCount > 0)
                 {
-                    bestUCTValue = uctValue;
-                    selectedChild = child;
+                    child.UCTValue = computeUCTValue(child);
                 }
             }
-
-            return selectedChild;
+            Debug.Log("CHILDREN COUNT: " + children.Count);
+            return children.OrderByDescending(child => child.UCTValue).FirstOrDefault(); ;
         }
 
         // Expands this node by exploring one of the unexplored moves
         public MCTSNode Expand()
         {
-            if (unexploredMoves.Count > 0)
+            for (int i = unexploredMoves.Count - 1; i >= 0; i--)
             {
-                int lastUnexploredMoveIndex = unexploredMoves.Count - 1;
-                Move move = unexploredMoves[lastUnexploredMoveIndex];
+                Move move = unexploredMoves[i];
                 Board newBoard = board.Clone();
                 newBoard.MakeMove(move);
-                MCTSNode childNode = new MCTSNode(newBoard, moveGenerator,evaluation, initialMove, !this.isMyTurn, this);
+                MCTSNode childNode = new MCTSNode(newBoard, moveGenerator, evaluation, initialMove, !this.isMyTurn, !this.team, this);
                 if (this.parent == null) //if we are in root - set initial move to this move
                 {
                     childNode.initialMove = move;
                 }
                 children.Add(childNode);
-                unexploredMoves.RemoveAt(lastUnexploredMoveIndex); 
-                return childNode;
-            } else
-            {
-                Debug.Log("NO UNEXPLORED MOVES LEFT");
             }
-            return null;
+            unexploredMoves.Clear();
+            return children.FirstOrDefault();
         }
 
         // Run a simulation (random game) from this node until a terminal state is reached
         public float Simulate(int playoutDepthLimit)
         {
-       
+
             // Clone the board state using the lightweight clone method
             SimPiece[,] simState = board.GetLightweightClone();
 
             // Set up the simulation variables
             int simulationDepth = 0;
-            bool isEnemyTurn = !isMyTurn;
-            bool hasKingBeenCaptured = false;
-
+            bool isMyTurnSimulation = isMyTurn;
+            bool teamToMove = team;
             while (simulationDepth < playoutDepthLimit)
             {
-                Debug.Log("simulationDepth: " + simulationDepth);
-
                 // Generate possible sim moves for the current state
-                List<SimMove> possibleMoves = moveGenerator.GetSimMoves(simState, isEnemyTurn);
+                List<SimMove> possibleMoves = moveGenerator.GetSimMoves(simState, teamToMove);
 
                 // Check if there are no possible moves (end of simulation)
                 if (possibleMoves.Count == 0)
@@ -107,9 +93,9 @@
 
                 if (possibleMoves.Count == 1)
                 {
-                    Debug.Log("FOUND END STATE");
+                    //Debug.Log("FOUND END STATE");
                     //return win immediately because only 1 possibleMove means capturing king
-                    return !isEnemyTurn ? 1.0f : 0.0f;
+                    //return isMyTurnSimulation ? 1.0f : 0.0f;
                 }
 
                 // Randomly select a move to play out
@@ -121,29 +107,16 @@
                 // Check for king capture (end of game)
                 if (IsKingCaptured(simState))
                 {
-                    hasKingBeenCaptured = true;
-                    break;
+                    return isMyTurnSimulation ? 1.0f : 0.0f;
                 }
 
                 // Switch turns
-                isEnemyTurn = !isEnemyTurn;
+                isMyTurnSimulation = !isMyTurnSimulation;
+                teamToMove = !teamToMove;
                 simulationDepth++;
             }
-            // Evaluate the resulting state
-            //TODO: Maybe just return result = evaluation.EvaluateSimBoard(simState, isEnemyTurn); every time?
-            Debug.Log("Returning result");
 
-            float result;
-            if (hasKingBeenCaptured || IsKingCaptured(simState))
-            {
-                result = !isEnemyTurn ? 1.0f : 0.0f; // Win for the current player if the opponent's king is captured
-            }
-            else
-            {
-                result = evaluation.EvaluateSimBoard(simState, isEnemyTurn); // Evaluate the board for intermediate results
-            }
-
-            return result;
+            return evaluation.EvaluateSimBoard(simState, team);
         }
 
         void ApplySimMove(SimPiece[,] simState, SimMove move)
@@ -188,10 +161,8 @@
         // Backpropagate the result of a simulation to this node and its ancestors
         public void Backpropagate(float result)
         {
-            Debug.Log("BACKPROPAGATING");
-            visitedCount++;  
+            visitedCount++;
             rewards += result;
-            UCTValue = computeUCTValue(this);
             parent?.Backpropagate(result);
         }
 

@@ -7,6 +7,7 @@
     using static System.Math;
     using System.Linq; // Add this to access LINQ methods
     using UnityEditor.Animations;
+    using UnityEditor.Experimental.GraphView;
 
     class MCTSSearch : ISearch
     {
@@ -21,7 +22,7 @@
         MCTSSettings settings;
         Board board;
         Evaluation evaluation;
-
+        bool team;
         System.Random rand;
 
         MCTSNode root;
@@ -38,7 +39,9 @@
             evaluation = new Evaluation();
             moveGenerator = new MoveGenerator();
             rand = new System.Random();
-            root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true);
+            team = board.WhiteToMove;
+            root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true, team);
+            Debug.Log("CONSTRUCTOR, whiteToMove: " + board.WhiteToMove.ToString());
         }
 
         public void StartSearch()
@@ -54,14 +57,16 @@
             moveGenerator.promotionsToGenerate = settings.promotionsToSearch;
             abortSearch = false;
             Diagnostics = new SearchDiagnostics();
+            root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true, team);
 
             SearchMoves();
+            Debug.Log("-------------------CHILDRENOS-------------------------");
             foreach (MCTSNode node in root.children)
             {
-                Debug.Log(node.UCTValue.ToString());
+                Debug.Log("move: " + node.initialMove.Name + ", visitedCount: " + node.visitedCount + ", rewards: " + node.rewards + ", UCT: " + node.UCTValue.ToString());
             }
-            bestMove = root.children.OrderByDescending(child => child.UCTValue).FirstOrDefault().initialMove;
-            Debug.Log("bestmove invalid: " + bestMove.IsInvalid);
+            bestMove = root.children.OrderByDescending(child => child.rewards).FirstOrDefault().initialMove;
+            Debug.Log("bestMove: " + bestMove.Name);
             onSearchComplete?.Invoke(bestMove);
 
             if (!settings.useThreading)
@@ -72,13 +77,8 @@
 
         public void EndSearch()
         {
-            Debug.Log("EndSearch method invoked");
-
-            //WTF IS THIS ABOMINATION XD
             if (settings.useTimeLimit)
             {
-                Debug.Log("abortSearch");
-
                 abortSearch = true;
             }
         }
@@ -90,43 +90,29 @@
             while (!abortSearch)
             {
                 if (settings.limitNumOfPlayouts && numOfPlayouts >= settings.maxNumOfPlayouts)
-                {
                     abortSearch = true;
-                }
-                Debug.Log("numOfPlayouts / maxNumOfPlayouts" + numOfPlayouts + " / " + settings.maxNumOfPlayouts);
-                //1. selection
+                //Debug.Log("numOfPlayouts / maxNumOfPlayouts" + numOfPlayouts + " / " + settings.maxNumOfPlayouts);
+
+                
                 MCTSNode selectedNodeToSimulate = root;
-                int depth = 0;
-                while (selectedNodeToSimulate.children.Count > 0)
+                
+                //1. selection
+                while (selectedNodeToSimulate.visitedCount > 0)
                 {
-                    Debug.Log("selectedNodeToSimulate.children.Count: " + selectedNodeToSimulate.children.Count);
                     selectedNodeToSimulate = selectedNodeToSimulate.SelectChild();
-                    depth++;
+                    Debug.Log("selectedNodeToSimulate: " + selectedNodeToSimulate == null);
                 }
-                Debug.Log("depth: " + depth);
-                if (selectedNodeToSimulate.visitedCount > 0)
-                {
-                    selectedNodeToSimulate.Expand();
-                } 
+
                 //2. expansion
-                if (selectedNodeToSimulate != null)
-                {
-                    Debug.Log("SIMULATING");
-                    // 3. simulation
-                    float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit);
-                    numOfPlayouts++;
-                    // 4. backpropagation
-                    selectedNodeToSimulate.Backpropagate(simulationResult);
-                    Debug.Log("backpropagated, now looking for bestMove");
+                selectedNodeToSimulate.Expand();
 
-                    Debug.Log("bestmove: " + bestMove);
-                } else
-                {
-                    abortSearch = true;
-                }
+                // 3. simulation
+                float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit);
+                numOfPlayouts++;
+
+                // 4. backpropagation
+                selectedNodeToSimulate.Backpropagate(simulationResult);
             }
-            Debug.Log("Search Aborted");
-
         }
 
         void LogDebugInfo()
