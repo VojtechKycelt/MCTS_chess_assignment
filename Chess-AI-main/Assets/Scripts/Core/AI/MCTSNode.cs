@@ -13,13 +13,13 @@
         public List<MCTSNode> children;
         public List<Move> unexploredMoves;
         public Move initialMove;    // The initial move that lead to this state 
-        public float rewards = 0; // Number of rewards this node found
+        public double rewards = 0; // Number of rewards this node found
         public int visitedCount = 0; // Number of times this node has been visited
         public double UCTValue = double.PositiveInfinity;
         public bool isMyTurn;
         public bool team;
         System.Random rand;
-        public double C = 1; // / Mathf.Sqrt(2f);
+        public double C = 1;// / Mathf.Sqrt(2);
 
         public MCTSNode(Board board, MoveGenerator moveGenerator, Evaluation evaluation, Move initialMove, bool isMyTurn, bool team, MCTSNode parent = null)
         {
@@ -39,15 +39,17 @@
         // Selects the best child node based on UCT 
         public MCTSNode SelectChild()
         {
+            if (children.Count == 0) return this;
+
             foreach (var child in children)
             {
                 if (child.visitedCount > 0)
                 {
                     child.UCTValue = computeUCTValue(child);
                 }
+              
             }
-            Debug.Log("CHILDREN COUNT: " + children.Count);
-            return children.OrderByDescending(child => child.UCTValue).FirstOrDefault(); ;
+            return children.OrderByDescending(child => child.UCTValue).FirstOrDefault();
         }
 
         // Expands this node by exploring one of the unexplored moves
@@ -70,7 +72,7 @@
         }
 
         // Run a simulation (random game) from this node until a terminal state is reached
-        public float Simulate(int playoutDepthLimit)
+        public float Simulate(int playoutDepthLimit, ref int numOfPlayouts)
         {
 
             // Clone the board state using the lightweight clone method
@@ -93,8 +95,8 @@
 
                 if (possibleMoves.Count == 1)
                 {
-                    //Debug.Log("FOUND END STATE");
                     //return win immediately because only 1 possibleMove means capturing king
+                    //could be draw or only one piece i guess
                     //return isMyTurnSimulation ? 1.0f : 0.0f;
                 }
 
@@ -113,10 +115,12 @@
                 // Switch turns
                 isMyTurnSimulation = !isMyTurnSimulation;
                 teamToMove = !teamToMove;
-                simulationDepth++;
+                simulationDepth++; //count here or in SearchMoves() ?
+                numOfPlayouts++;
+
             }
 
-            return evaluation.EvaluateSimBoard(simState, team);
+            return evaluation.EvaluateSimBoard(simState, teamToMove);
         }
 
         void ApplySimMove(SimPiece[,] simState, SimMove move)
@@ -162,7 +166,10 @@
         public void Backpropagate(float result)
         {
             visitedCount++;
+            
             rewards += result;
+            
+            
             parent?.Backpropagate(result);
         }
 

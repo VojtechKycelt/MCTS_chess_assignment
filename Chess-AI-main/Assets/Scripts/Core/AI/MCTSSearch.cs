@@ -13,20 +13,15 @@
     {
         public event System.Action<Move> onSearchComplete;
 
-        MoveGenerator moveGenerator;
-
-        Move bestMove;
-        int bestEval;
-        bool abortSearch;
-
-        MCTSSettings settings;
-        Board board;
-        Evaluation evaluation;
-        bool team;
         System.Random rand;
-
+        MoveGenerator moveGenerator;
+        MCTSSettings settings;
+        Evaluation evaluation;
         MCTSNode root;
+        Board board;
+        bool team;
         int numOfPlayouts;
+        bool abortSearch;
 
         // Diagnostics
         public SearchDiagnostics Diagnostics { get; set; }
@@ -41,32 +36,38 @@
             rand = new System.Random();
             team = board.WhiteToMove;
             root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true, team);
-            Debug.Log("CONSTRUCTOR, whiteToMove: " + board.WhiteToMove.ToString());
         }
 
         public void StartSearch()
         {
             Debug.Log("STARTING SEARCH");
+
             InitDebugInfo();
 
             // Initialize search settings
-            bestEval = 0;
-            bestMove = Move.InvalidMove;
+            evaluation = new Evaluation();
+            moveGenerator = new MoveGenerator();
+            rand = new System.Random();
+            team = board.WhiteToMove;
             numOfPlayouts = 0;
-
             moveGenerator.promotionsToGenerate = settings.promotionsToSearch;
             abortSearch = false;
             Diagnostics = new SearchDiagnostics();
             root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true, team);
-
+            
             SearchMoves();
-            Debug.Log("-------------------CHILDRENOS-------------------------");
-            foreach (MCTSNode node in root.children)
+
+            //Debug.Log("-------------------CHILDREN-------------------------");
+
+            Move bestMove = root.children.OrderByDescending(child => child.rewards).FirstOrDefault().initialMove;
+            foreach (MCTSNode node in root.children.OrderByDescending(child => child.rewards))
             {
                 Debug.Log("move: " + node.initialMove.Name + ", visitedCount: " + node.visitedCount + ", rewards: " + node.rewards + ", UCT: " + node.UCTValue.ToString());
+
             }
-            bestMove = root.children.OrderByDescending(child => child.rewards).FirstOrDefault().initialMove;
-            Debug.Log("bestMove: " + bestMove.Name);
+            Debug.Log("BEST MOVE: " + bestMove.Name);
+            //Debug.Log("numOfPlayouts: " + numOfPlayouts);
+
             onSearchComplete?.Invoke(bestMove);
 
             if (!settings.useThreading)
@@ -90,28 +91,28 @@
             while (!abortSearch)
             {
                 if (settings.limitNumOfPlayouts && numOfPlayouts >= settings.maxNumOfPlayouts)
-                    abortSearch = true;
+                    break;
+                //if (numOfPlayouts >= 10000)break;
                 //Debug.Log("numOfPlayouts / maxNumOfPlayouts" + numOfPlayouts + " / " + settings.maxNumOfPlayouts);
 
                 
                 MCTSNode selectedNodeToSimulate = root;
-                
                 //1. selection
                 while (selectedNodeToSimulate.visitedCount > 0)
                 {
                     selectedNodeToSimulate = selectedNodeToSimulate.SelectChild();
-                    Debug.Log("selectedNodeToSimulate: " + selectedNodeToSimulate == null);
                 }
 
                 //2. expansion
                 selectedNodeToSimulate.Expand();
 
                 // 3. simulation
-                float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit);
-                numOfPlayouts++;
+                float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit, ref numOfPlayouts);
+                //numOfPlayouts++;
 
                 // 4. backpropagation
                 selectedNodeToSimulate.Backpropagate(simulationResult);
+               
             }
         }
 
