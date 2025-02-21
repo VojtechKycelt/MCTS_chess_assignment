@@ -82,7 +82,7 @@
             }
             Debug.Log("BEST MOVE: " + bestMove.Name);
             Debug.Log("numOfPlayouts: " + numOfPlayouts);//*/
-
+             
             if (!settings.useThreading)
             {
                 LogDebugInfo();
