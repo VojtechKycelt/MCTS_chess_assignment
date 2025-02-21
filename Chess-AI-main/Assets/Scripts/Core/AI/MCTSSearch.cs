@@ -13,19 +13,26 @@
     {
         public event System.Action<Move> onSearchComplete;
 
-        System.Random rand;
         MoveGenerator moveGenerator;
-        MCTSSettings settings;
-        Evaluation evaluation;
-        MCTSNode root;
-        Board board;
-        bool team;
-        int numOfPlayouts;
+
+        Move bestMove;
+        int bestEval;
         bool abortSearch;
+
+        MCTSSettings settings;
+        Board board;
+        Evaluation evaluation;
+
+        System.Random rand;
 
         // Diagnostics
         public SearchDiagnostics Diagnostics { get; set; }
         System.Diagnostics.Stopwatch searchStopwatch;
+
+        //My added variables
+        MCTSNode root;
+        bool team;
+        int numOfPlayouts;
 
         public MCTSSearch(Board board, MCTSSettings settings)
         {
@@ -34,41 +41,47 @@
             evaluation = new Evaluation();
             moveGenerator = new MoveGenerator();
             rand = new System.Random();
+
             team = board.WhiteToMove;
-            root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true, team);
+            root = new MCTSNode(board, moveGenerator, rand, evaluation, Move.InvalidMove, true, team);
         }
 
         public void StartSearch()
         {
-            Debug.Log("STARTING SEARCH");
-
             InitDebugInfo();
 
             // Initialize search settings
-            evaluation = new Evaluation();
-            moveGenerator = new MoveGenerator();
-            rand = new System.Random();
-            team = board.WhiteToMove;
-            numOfPlayouts = 0;
+            bestEval = 0;
+            bestMove = Move.InvalidMove;
+
             moveGenerator.promotionsToGenerate = settings.promotionsToSearch;
             abortSearch = false;
             Diagnostics = new SearchDiagnostics();
-            root = new MCTSNode(board, moveGenerator, evaluation, Move.InvalidMove, true, team);
+
+            team = board.WhiteToMove;
+            numOfPlayouts = 0;
+            root = new MCTSNode(board, moveGenerator, rand, evaluation, Move.InvalidMove, true, team);
             
             SearchMoves();
 
-            //Debug.Log("-------------------CHILDREN-------------------------");
+            bestMove = root.children
+                .Select((child, index) => new { child, index }) // Attach original index
+                .OrderByDescending(x => x.child.rewards)        // Sort by rewards
+                .ThenBy(x => x.index)                           // Maintain original order for ties
+                .FirstOrDefault().child.initialMove;
+            //bestMove = root.children.OrderByDescending(child => child.rewards).FirstOrDefault().initialMove;
 
-            Move bestMove = root.children.OrderByDescending(child => child.rewards).FirstOrDefault().initialMove;
-            foreach (MCTSNode node in root.children.OrderByDescending(child => child.rewards))
+            onSearchComplete?.Invoke(bestMove);
+
+            //DEBUG
+            /*Debug.Log("-------------------CHILDREN-------------------------");
+            foreach (MCTSNode node in root.children)//.OrderBy(child => child.rewards))
             {
                 Debug.Log("move: " + node.initialMove.Name + ", visitedCount: " + node.visitedCount + ", rewards: " + node.rewards + ", UCT: " + node.UCTValue.ToString());
 
             }
             Debug.Log("BEST MOVE: " + bestMove.Name);
-            //Debug.Log("numOfPlayouts: " + numOfPlayouts);
-
-            onSearchComplete?.Invoke(bestMove);
+            Debug.Log("numOfPlayouts: " + numOfPlayouts);//*/
 
             if (!settings.useThreading)
             {
@@ -91,24 +104,24 @@
             while (!abortSearch)
             {
                 if (settings.limitNumOfPlayouts && numOfPlayouts >= settings.maxNumOfPlayouts)
+                {
+                    abortSearch = true;
                     break;
-                //if (numOfPlayouts >= 10000)break;
-                //Debug.Log("numOfPlayouts / maxNumOfPlayouts" + numOfPlayouts + " / " + settings.maxNumOfPlayouts);
-
+                }
+                    
                 
                 MCTSNode selectedNodeToSimulate = root;
-                //1. selection
-                while (selectedNodeToSimulate.visitedCount > 0)
-                {
-                    selectedNodeToSimulate = selectedNodeToSimulate.SelectChild();
-                }
 
+                //1. selection
+                while (selectedNodeToSimulate.visitedCount > 0 && selectedNodeToSimulate.unexploredMoves.Count == 0)
+                    selectedNodeToSimulate = selectedNodeToSimulate.SelectChild();
+                
                 //2. expansion
                 selectedNodeToSimulate.Expand();
 
                 // 3. simulation
-                float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit, ref numOfPlayouts);
-                //numOfPlayouts++;
+                float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit);
+                numOfPlayouts++;
 
                 // 4. backpropagation
                 selectedNodeToSimulate.Backpropagate(simulationResult);
