@@ -8,6 +8,7 @@
     using System.Linq; // Add this to access LINQ methods
     using UnityEditor.Animations;
     using UnityEditor.Experimental.GraphView;
+    using UnityEditor;
 
     class MCTSSearch : ISearch
     {
@@ -61,33 +62,26 @@
             team = board.WhiteToMove;
             numOfPlayouts = 0;
             root = new MCTSNode(board, moveGenerator, rand, evaluation, Move.InvalidMove, true, team);
-            
+            root.Expand();
+
             SearchMoves();
 
             bestMove = root.children
                 .Select((child, index) => new { child, index }) // Attach original index
-                .OrderByDescending(x => x.child.rewards)        // Sort by rewards
-                .ThenBy(x => x.index)                           // Maintain original order for ties
+                .OrderByDescending(x => (x.child.rewards/x.child.visitedCount)) // Sort by average reward
+                .ThenBy(x => x.index) // Maintain original order for ties
                 .FirstOrDefault().child.initialMove;
-            //bestMove = root.children.OrderByDescending(child => child.rewards).FirstOrDefault().initialMove;
+
 
             onSearchComplete?.Invoke(bestMove);
 
-            //DEBUG
-            /*Debug.Log("-------------------CHILDREN-------------------------");
-            foreach (MCTSNode node in root.children)//.OrderBy(child => child.rewards))
-            {
-                Debug.Log("move: " + node.initialMove.Name + ", visitedCount: " + node.visitedCount + ", rewards: " + node.rewards + ", UCT: " + node.UCTValue.ToString());
-
-            }
-            Debug.Log("BEST MOVE: " + bestMove.Name);
-            Debug.Log("numOfPlayouts: " + numOfPlayouts);//*/
-             
             if (!settings.useThreading)
             {
-                LogDebugInfo();
+                //LogDebugInfo();
             }
         }
+
+        
 
         public void EndSearch()
         {
@@ -108,30 +102,48 @@
                     abortSearch = true;
                     break;
                 }
-                    
-                
+
                 MCTSNode selectedNodeToSimulate = root;
 
                 //1. selection
-                while (selectedNodeToSimulate.visitedCount > 0 && selectedNodeToSimulate.unexploredMoves.Count == 0)
+                while (selectedNodeToSimulate.children.Count > 0)
+                {
                     selectedNodeToSimulate = selectedNodeToSimulate.SelectChild();
-                
+                }
+
                 //2. expansion
-                selectedNodeToSimulate.Expand();
+                selectedNodeToSimulate = selectedNodeToSimulate.Expand();
 
                 // 3. simulation
                 float simulationResult = selectedNodeToSimulate.Simulate(settings.playoutDepthLimit);
                 numOfPlayouts++;
-
+                if (selectedNodeToSimulate.isMyTurn)
+                    simulationResult = 1 - simulationResult;
                 // 4. backpropagation
-                selectedNodeToSimulate.Backpropagate(simulationResult);
-               
+                selectedNodeToSimulate.Backpropagate(1 - simulationResult); 
             }
         }
 
         void LogDebugInfo()
         {
             // Optional
+            Debug.Log("-------------------UNEXPLORED MOVES-------------------------");
+
+            foreach (Move move in moveGenerator.GenerateMoves(board, true))
+            {
+                Debug.Log("move: " + move.Name);
+
+            };
+
+            //DEBUG
+            Debug.Log("-------------------CHILDREN-------------------------");
+            foreach (MCTSNode node in root.children.OrderBy(child => child.rewards))
+            {
+                Debug.Log("move: " + node.initialMove.Name + ", visitedCount: " + node.visitedCount + ", rewards: " + node.rewards + ", UCT: " + node.UCTValue.ToString());
+
+            }
+            Debug.Log("BEST MOVE: " + bestMove.Name);
+            Debug.Log("numOfPlayouts: " + numOfPlayouts);//*/
         }
 
         void InitDebugInfo()
